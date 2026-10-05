@@ -1,0 +1,26 @@
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.35
+alembic==1.13.3
+aiosqlite==0.20.0
+# psycopg2-binary==2.9.9  # Uncomment for PostgreSQL (production)
+
+# ── Validation & Settings ────────────────────────────────────────────────────
+pydantic==2.9.2
+pydantic-settings==2.5.2
+email-validator==2.2.0
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.0.1
+
+# ── File Handling ─────────────────────────────────────────────────────────────
+python-multipart==0.0.12
+aiofiles==24.1.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1

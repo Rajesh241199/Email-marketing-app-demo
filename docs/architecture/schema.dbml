@@ -1,0 +1,964 @@
+// Generated from the SQLAlchemy models by backend/scripts/export_dbml.py.
+// Edit the models, not this file.
+
+Project email_marketing_platform {
+  database_type: 'PostgreSQL'
+  Note: 'Email Marketing Platform - Schema V1'
+}
+
+Enum audience_mode {
+  include
+  exclude
+}
+
+Enum auth_provider {
+  google
+  microsoft
+  auth0
+  cognito
+  oidc
+}
+
+Enum automation_status {
+  draft
+  active
+  paused
+}
+
+Enum automation_trigger {
+  list_joined
+  tag_applied
+}
+
+Enum block_kind {
+  header
+  footer
+}
+
+Enum bounce_type {
+  permanent
+  transient
+  undetermined
+}
+
+Enum campaign_status {
+  draft
+  scheduled
+  sending
+  sent
+  partially_failed
+  failed
+  cancelled
+}
+
+Enum campaign_tier {
+  regular
+  digest
+  essential
+}
+
+Enum change_source {
+  manual
+  csv_import
+  api
+  preference_center
+  one_click_unsubscribe
+  email_link
+  provider_event
+  automation
+}
+
+Enum domain_auth_status {
+  not_started
+  pending
+  verified
+  failed
+}
+
+Enum email_event_type {
+  send
+  delivery
+  delivery_delay
+  bounce
+  complaint
+  reject
+  open
+  click
+  unsubscribe
+}
+
+Enum email_frequency {
+  all
+  weekly_digest
+  essential_only
+}
+
+Enum email_provider {
+  ses
+  tracking
+}
+
+Enum enrollment_status {
+  active
+  completed
+  exited
+}
+
+Enum field_type {
+  text
+  number
+  date
+  boolean
+  choice
+}
+
+Enum import_status {
+  queued
+  processing
+  completed
+  completed_with_errors
+  failed
+}
+
+Enum import_target {
+  email
+  first_name
+  last_name
+  external_id
+  custom_field
+  ignore
+}
+
+Enum membership_status {
+  active
+  opted_out
+}
+
+Enum message_status {
+  queued
+  submitting
+  accepted
+  delivered
+  soft_bounced
+  bounced
+  complained
+  rejected
+  failed
+  cancelled
+}
+
+Enum recipient_status {
+  pending
+  queued
+  skipped
+  cancelled
+}
+
+Enum segment_match {
+  all
+  any
+}
+
+Enum sender_status {
+  unverified
+  verification_pending
+  verified
+}
+
+Enum skip_reason {
+  unsubscribed
+  suppressed
+  list_opted_out
+  frequency_preference
+  excluded_by_rule
+  invalid_email
+}
+
+Enum step_type {
+  email
+  wait
+}
+
+Enum subscriber_status {
+  subscribed
+  unsubscribed
+  suppressed
+}
+
+Enum subscription_event_type {
+  subscribed
+  unsubscribed
+  resubscribed
+  list_opt_in
+  list_opt_out
+  profile_updated
+  suppressed
+}
+
+Enum suppression_reason {
+  hard_bounce
+  complaint
+  unsubscribe
+  manual
+}
+
+Enum token_purpose {
+  email_verification
+  password_reset
+}
+
+Enum user_role {
+  owner
+  admin
+  member
+}
+
+Enum wait_unit {
+  hours
+  days
+}
+
+Table accounts [headercolor: #3D5FBF] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(200) [not null, note: 'Business name used in the email footer']
+  website varchar(255)
+  country_code char(2) [not null, note: 'ISO 3166-1 alpha-2']
+  address_line1 varchar(255) [not null]
+  address_line2 varchar(255)
+  city varchar(120) [not null]
+  region varchar(120)
+  postal_code varchar(20)
+  timezone varchar(64) [not null, default: 'UTC', note: 'IANA timezone for scheduling and display (BR-07)']
+  date_format varchar(20) [not null, default: 'DD/MM/YYYY']
+  time_format varchar(5) [not null, default: '24h']
+  logo_key varchar(512) [note: 'Object-storage key (PREF-08)']
+  brand_color char(7)
+  onboarding_completed_at timestamptz [note: 'Set when send-readiness checks first pass (ONB-07, ONB-09)']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: 'One business using the platform. Every business-owned row carries account_id.'
+}
+
+Table custom_fields [headercolor: #0F8A83] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  field_key varchar(64) [not null, note: 'Merge-tag key, e.g. company']
+  label varchar(120) [not null]
+  data_type field_type [not null, default: 'text']
+  options jsonb [note: 'Allowed values for choice fields']
+  show_in_preferences boolean [not null, default: false, note: 'PREF-02']
+  sort_order integer [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, field_key) [unique, name: 'uq_custom_fields_account_id_field_key']
+  }
+
+  Note: 'Account-defined subscriber field (SUB-08).'
+}
+
+Table lists [headercolor: #0F8A83] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  name varchar(150) [not null]
+  description text
+  show_in_preferences boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, name) [unique, name: 'uq_lists_account_id_name']
+  }
+
+  Note: 'List / group (SUB-07). Also a topic in the preference center (PREF-03).'
+}
+
+Table sending_domains [headercolor: #3D5FBF] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  domain varchar(253) [not null]
+  dkim_status domain_auth_status [not null, default: 'not_started']
+  spf_status domain_auth_status [not null, default: 'not_started']
+  dmarc_status domain_auth_status [not null, default: 'not_started']
+  provider_identity varchar(255) [note: 'Provider identity reference, e.g. SES identity ARN']
+  verified_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, domain) [unique, name: 'uq_sending_domains_account_id_domain']
+  }
+}
+
+Table subscribers [headercolor: #0F8A83] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  email citext [not null]
+  first_name varchar(100)
+  last_name varchar(100)
+  external_id varchar(100) [note: 'Customer subscriber number / ID from CSV (SUB-IMP-06)']
+  status subscriber_status [not null, default: 'subscribed', note: 'Imports never overwrite unsubscribed / suppressed (BR-05)']
+  source change_source [not null, default: 'manual']
+  consent_source varchar(255) [note: 'SUB-10']
+  consent_at timestamptz
+  consent_ip inet
+  unsubscribed_at timestamptz
+  email_frequency email_frequency [not null, default: 'all', note: 'Frequency preference (PREF-09)']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, created_at) [name: 'ix_subscribers_account_id_created_at']
+    (account_id, external_id) [name: 'ix_subscribers_account_id_external_id']
+    (account_id, status) [name: 'ix_subscribers_account_id_status']
+    (account_id, email) [unique, name: 'uq_subscribers_account_id_email']
+  }
+
+  Note: 'One record per person per account (email is unique within the account).'
+}
+
+Table tags [headercolor: #0F8A83] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  name varchar(100) [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, name) [unique, name: 'uq_tags_account_id_name']
+  }
+}
+
+Table users [headercolor: #3D5FBF] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  email citext [not null, unique, note: 'Login email, globally unique']
+  password_hash varchar(255) [note: 'argon2id; NULL for users who only sign in through an external IdP']
+  full_name varchar(200)
+  role user_role [not null, default: 'owner']
+  email_verified_at timestamptz
+  last_login_at timestamptz
+  disabled_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    account_id [name: 'ix_users_account_id']
+  }
+}
+
+Table auth_tokens [headercolor: #3D5FBF] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null, ref: > users.id]
+  purpose token_purpose [not null]
+  token_hash varchar(128) [not null, unique]
+  expires_at timestamptz [not null]
+  used_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (user_id, purpose) [name: 'ix_auth_tokens_user_id_purpose']
+  }
+
+  Note: 'Single-use email verification / password reset token. Only a hash is stored.'
+}
+
+Table content_blocks [headercolor: #7650B8] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  kind block_kind [not null]
+  name varchar(200) [not null]
+  content_json jsonb [not null]
+  html text
+  is_default boolean [not null, default: false, note: 'Used for new templates; one default per kind']
+  created_by uuid [ref: >? users.id]
+  deleted_at timestamptz [note: 'Soft delete']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, kind) [name: 'ix_content_blocks_account_id_kind']
+    (account_id, kind) [unique, name: 'uq_content_blocks_default_per_kind', note: 'WHERE is_default AND deleted_at IS NULL']
+  }
+
+  Note: 'Reusable header or footer shared by many templates (TMP-04).'
+}
+
+Table import_jobs [headercolor: #A87A0C] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  created_by uuid [not null, ref: > users.id]
+  status import_status [not null, default: 'queued']
+  file_key varchar(512) [not null, note: 'Object-storage key of the CSV']
+  original_filename varchar(255) [not null]
+  has_header_row boolean [not null, default: true, note: 'SUB-IMP-03']
+  target_list_id uuid [ref: >? lists.id]
+  update_existing boolean [not null, default: false, note: 'Update profile data of existing subscribers; never overrides unsubscribe/suppression']
+  total_rows integer
+  imported_count integer [not null, default: 0]
+  updated_count integer [not null, default: 0]
+  duplicate_count integer [not null, default: 0]
+  rejected_count integer [not null, default: 0]
+  error_message text
+  started_at timestamptz
+  finished_at timestamptz
+  correlation_id uuid [note: 'Trace ID across API request, background job and provider events']
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, created_at) [name: 'ix_import_jobs_account_id_created_at']
+    created_at [name: 'ix_import_jobs_pending', note: 'WHERE status IN (\'queued\', \'processing\')']
+  }
+}
+
+Table list_memberships [headercolor: #0F8A83] {
+  list_id uuid [not null, ref: > lists.id]
+  subscriber_id uuid [not null, ref: > subscribers.id]
+  status membership_status [not null, default: 'active', note: 'opted_out keeps history for opt-down (PREF-04)']
+  source change_source [not null, default: 'manual']
+  added_at timestamptz [not null, default: `now()`]
+  removed_at timestamptz
+
+  Indexes {
+    (list_id, subscriber_id) [pk]
+    list_id [name: 'ix_list_memberships_list_id_active', note: 'WHERE status = \'active\'']
+    subscriber_id [name: 'ix_list_memberships_subscriber_id']
+  }
+
+  Note: 'Subscriber <-> list. A new active row fires list_joined automations.'
+}
+
+Table media_assets [headercolor: #7650B8] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  file_key varchar(512) [not null]
+  filename varchar(255) [not null]
+  content_type varchar(100) [not null]
+  size_bytes bigint [not null]
+  width integer
+  height integer
+  alt_text varchar(255) [note: 'TMP-10']
+  created_by uuid [ref: >? users.id]
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    account_id [name: 'ix_media_assets_account_id']
+  }
+}
+
+Table segments [headercolor: #0F8A83] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  name varchar(150) [not null]
+  match_type segment_match [not null, default: 'all']
+  conditions jsonb [not null, note: 'Rules over fields, tags, lists and status']
+  created_by uuid [ref: >? users.id]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, name) [unique, name: 'uq_segments_account_id_name']
+  }
+}
+
+Table senders [headercolor: #3D5FBF] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  sending_domain_id uuid [ref: >? sending_domains.id]
+  from_name varchar(120) [not null]
+  from_email citext [not null]
+  reply_to_email citext
+  status sender_status [not null, default: 'unverified']
+  is_default boolean [not null, default: false]
+  verified_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, from_email) [unique, name: 'uq_senders_account_id_from_email']
+  }
+
+  Note: 'From / reply-to identity. Sending is blocked unless status is verified (BR-02).'
+}
+
+Table subscriber_field_values [headercolor: #0F8A83] {
+  subscriber_id uuid [not null, ref: > subscribers.id]
+  custom_field_id uuid [not null, ref: > custom_fields.id]
+  value_text text
+  value_number numeric
+  value_date date
+  value_bool boolean
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (subscriber_id, custom_field_id) [pk]
+    (custom_field_id, value_text) [name: 'ix_subscriber_field_values_field_id_value_text']
+  }
+
+  Note: 'Typed value per subscriber per custom field, so segments can filter numbers and dates. CHECK: ck_subscriber_field_values_single_typed_value: num_nonnulls(value_text, value_number, value_date, value_bool) <= 1'
+}
+
+Table subscriber_tags [headercolor: #0F8A83] {
+  subscriber_id uuid [not null, ref: > subscribers.id]
+  tag_id uuid [not null, ref: > tags.id]
+  applied_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (subscriber_id, tag_id) [pk]
+    tag_id [name: 'ix_subscriber_tags_tag_id']
+  }
+
+  Note: 'Applying a tag fires tag_applied automations.'
+}
+
+Table user_identities [headercolor: #3D5FBF] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null, ref: > users.id]
+  provider auth_provider [not null]
+  issuer varchar(255) [not null, note: 'OIDC iss claim']
+  external_subject varchar(255) [not null, note: 'OIDC sub claim']
+  email_at_provider citext
+  last_login_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    user_id [name: 'ix_user_identities_user_id']
+    (issuer, external_subject) [unique, name: 'uq_user_identities_issuer_subject']
+  }
+
+  Note: 'Link between a user and an external identity provider (OIDC issuer + subject).'
+}
+
+Table user_sessions [headercolor: #3D5FBF] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null, ref: > users.id]
+  refresh_token_hash varchar(128) [not null, unique]
+  user_agent text
+  ip_address inet
+  expires_at timestamptz [not null]
+  last_used_at timestamptz
+  revoked_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    user_id [name: 'ix_user_sessions_user_id_active', note: 'WHERE revoked_at IS NULL']
+  }
+
+  Note: 'Server-side session / refresh token. Revoking it signs the user out (ONB-01).'
+}
+
+Table automations [headercolor: #4F8A25] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  name varchar(200) [not null]
+  status automation_status [not null, default: 'draft']
+  trigger_type automation_trigger [not null]
+  trigger_list_id uuid [ref: >? lists.id]
+  trigger_tag_id uuid [ref: >? tags.id]
+  sender_id uuid [ref: >? senders.id]
+  allow_reentry boolean [not null, default: false, note: 'AUT-09']
+  activated_at timestamptz
+  created_by uuid [ref: >? users.id]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, status) [name: 'ix_automations_account_id_status']
+    trigger_list_id [name: 'ix_automations_active_trigger_list', note: 'WHERE status = \'active\' AND trigger_list_id IS NOT NULL']
+    trigger_tag_id [name: 'ix_automations_active_trigger_tag', note: 'WHERE status = \'active\' AND trigger_tag_id IS NOT NULL']
+  }
+
+  Note: 'CHECK: ck_automations_trigger_target_matches_type: (trigger_type = \'list_joined\' AND trigger_list_id IS NOT NULL AND trigger_tag_id IS NULL) OR (trigger_type = \'tag_applied\' AND trigger_tag_id IS NOT NULL AND trigger_list_id IS NULL) | ck_automations_active_has_sender: status <> \'active\' OR sender_id IS NOT NULL'
+}
+
+Table import_column_mappings [headercolor: #A87A0C] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  import_job_id uuid [not null, ref: > import_jobs.id]
+  column_index integer [not null]
+  source_header varchar(255)
+  sample_value text
+  target import_target [not null]
+  custom_field_id uuid [ref: >? custom_fields.id, note: 'Set when target = custom_field']
+
+  Indexes {
+    (import_job_id, column_index) [unique, name: 'uq_import_column_mappings_job_id_column_index']
+  }
+
+  Note: 'What each uploaded CSV column maps to (SUB-IMP-05, SUB-IMP-06, SUB-IMP-07). CHECK: ck_import_column_mappings_custom_field_target: (target = \'custom_field\') = (custom_field_id IS NOT NULL)'
+}
+
+Table import_row_errors [headercolor: #A87A0C] {
+  id bigint [pk, increment]
+  import_job_id uuid [not null, ref: > import_jobs.id]
+  row_number integer [not null]
+  email varchar(320)
+  error_code varchar(50) [not null, note: 'invalid_email, missing_email, duplicate_in_file, suppressed']
+  raw_row jsonb
+
+  Indexes {
+    import_job_id [name: 'ix_import_row_errors_import_job_id']
+  }
+
+  Note: 'Rejected rows and reasons, shown in the import summary.'
+}
+
+Table templates [headercolor: #7650B8] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  name varchar(200) [not null]
+  subject varchar(255)
+  preheader varchar(255)
+  header_block_id uuid [ref: >? content_blocks.id]
+  footer_block_id uuid [ref: >? content_blocks.id]
+  content_json jsonb [not null, note: 'Body blocks: text, image, button, divider, spacer (TMP-02)']
+  html text [note: 'Rendered responsive HTML']
+  plain_text text [note: 'Plain-text fallback (TMP-11)']
+  duplicated_from_id uuid [ref: >? templates.id]
+  created_by uuid [ref: >? users.id]
+  deleted_at timestamptz [note: 'Soft delete']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, name) [name: 'ix_templates_account_id_name']
+  }
+}
+
+Table automation_steps [headercolor: #4F8A25] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  automation_id uuid [not null, ref: > automations.id]
+  position integer [not null]
+  step_type step_type [not null]
+  wait_amount integer
+  wait_unit wait_unit
+  template_id uuid [ref: >? templates.id]
+  subject varchar(255)
+  preheader varchar(255)
+  content_json jsonb
+  html text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (automation_id, position) [unique, name: 'uq_automation_steps_automation_id_position']
+  }
+
+  Note: 'CHECK: ck_automation_steps_step_fields_match_type: (step_type = \'wait\' AND wait_amount > 0 AND wait_unit IS NOT NULL AND template_id IS NULL AND content_json IS NULL) OR (step_type = \'email\' AND wait_amount IS NULL AND wait_unit IS NULL AND (template_id IS NOT NULL OR content_json IS NOT NULL))'
+}
+
+Table campaigns [headercolor: #C4405F] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  name varchar(200) [not null, note: 'Internal name (CMP-01)']
+  status campaign_status [not null, default: 'draft']
+  tier campaign_tier [not null, default: 'regular', note: 'Matched against subscribers.email_frequency (PREF-09)']
+  topic_list_id uuid [ref: >? lists.id, note: 'Topic this campaign counts as for preference-center opt-outs. Applies even when the audience is a segment, tag, or individual subscriber, not just a list (schema-v1.md section 4)']
+  sender_id uuid [ref: >? senders.id]
+  template_id uuid [ref: >? templates.id, note: 'Template it started from; content is copied into this row']
+  subject varchar(255)
+  preheader varchar(255)
+  content_json jsonb
+  html text
+  plain_text text
+  scheduled_at timestamptz [note: 'UTC; entered in account timezone (CMP-09)']
+  confirmed_by uuid [ref: >? users.id]
+  confirmed_at timestamptz [note: 'Final pre-send confirmation (CMP-08)']
+  audience_frozen_at timestamptz [note: 'campaign_recipients written; audience fixed']
+  sending_started_at timestamptz [note: 'Content and audience immutable from here (BR-04)']
+  completed_at timestamptz
+  cancelled_at timestamptz
+  eligible_count integer [note: 'Recipients with status pending/queued after freeze (CMP-05)']
+  duplicated_from_id uuid [ref: >? campaigns.id]
+  created_by uuid [ref: >? users.id]
+  correlation_id uuid [note: 'Trace ID across API request, background job and provider events']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, created_at) [name: 'ix_campaigns_account_id_created_at']
+    (account_id, status) [name: 'ix_campaigns_account_id_status']
+    scheduled_at [name: 'ix_campaigns_due', note: 'WHERE status = \'scheduled\'']
+    topic_list_id [name: 'ix_campaigns_topic_list_id', note: 'WHERE topic_list_id IS NOT NULL']
+  }
+
+  Note: 'One-to-many email send. Content is copied from the template at creation. CHECK: ck_campaigns_frozen_before_send: status NOT IN (\'sending\', \'sent\', \'partially_failed\', \'failed\') OR (audience_frozen_at IS NOT NULL AND sending_started_at IS NOT NULL) | ck_campaigns_scheduled_has_time: status <> \'scheduled\' OR scheduled_at IS NOT NULL | ck_campaigns_confirmed_before_send: status NOT IN (\'scheduled\', \'sending\', \'sent\', \'partially_failed\', \'failed\') OR (sender_id IS NOT NULL AND confirmed_at IS NOT NULL)'
+}
+
+Table automation_enrollments [headercolor: #4F8A25] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  automation_id uuid [not null, ref: > automations.id]
+  subscriber_id uuid [not null, ref: > subscribers.id]
+  current_step_id uuid [ref: >? automation_steps.id]
+  status enrollment_status [not null, default: 'active']
+  next_run_at timestamptz [note: 'Worker picks up due steps']
+  entered_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+  exit_reason varchar(50) [note: 'e.g. unsubscribed, suppressed, automation_paused']
+
+  Indexes {
+    current_step_id [name: 'ix_automation_enrollments_current_step_id']
+    next_run_at [name: 'ix_automation_enrollments_due', note: 'WHERE status = \'active\'']
+    subscriber_id [name: 'ix_automation_enrollments_subscriber_id']
+    (automation_id, subscriber_id) [unique, name: 'uq_automation_enrollments_automation_id_subscriber_id']
+  }
+
+  Note: 'A subscriber moving through an automation (AUT-08). CHECK: ck_automation_enrollments_active_has_next_run: status <> \'active\' OR next_run_at IS NOT NULL'
+}
+
+Table campaign_audiences [headercolor: #C4405F] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  campaign_id uuid [not null, ref: > campaigns.id]
+  mode audience_mode [not null, default: 'include']
+  list_id uuid [ref: >? lists.id]
+  segment_id uuid [ref: >? segments.id]
+  tag_id uuid [ref: >? tags.id]
+  subscriber_id uuid [ref: >? subscribers.id]
+
+  Indexes {
+    campaign_id [name: 'ix_campaign_audiences_campaign_id']
+    list_id [name: 'ix_campaign_audiences_list_id', note: 'WHERE list_id IS NOT NULL']
+    segment_id [name: 'ix_campaign_audiences_segment_id', note: 'WHERE segment_id IS NOT NULL']
+    subscriber_id [name: 'ix_campaign_audiences_subscriber_id', note: 'WHERE subscriber_id IS NOT NULL']
+    tag_id [name: 'ix_campaign_audiences_tag_id', note: 'WHERE tag_id IS NOT NULL']
+  }
+
+  Note: 'Audience rule (CMP-04). Exactly one target column is set per row. CHECK: ck_campaign_audiences_exactly_one_target: num_nonnulls(list_id, segment_id, tag_id, subscriber_id) = 1'
+}
+
+Table campaign_links [headercolor: #C4405F] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  campaign_id uuid [not null, ref: > campaigns.id]
+  url text [not null]
+  label varchar(255)
+  position integer
+
+  Indexes {
+    campaign_id [name: 'ix_campaign_links_campaign_id']
+  }
+
+  Note: 'Tracked link in sent content, for per-link click counts.'
+}
+
+Table campaign_stats [headercolor: #2A7DB5] {
+  campaign_id uuid [pk, ref: - campaigns.id]
+  recipients integer [not null, default: 0, note: 'Frozen, not skipped']
+  skipped integer [not null, default: 0]
+  sent integer [not null, default: 0, note: 'Accepted by the provider']
+  delivered integer [not null, default: 0]
+  hard_bounces integer [not null, default: 0]
+  soft_bounces integer [not null, default: 0]
+  complaints integer [not null, default: 0]
+  unique_opens integer [not null, default: 0]
+  unique_clicks integer [not null, default: 0]
+  unsubscribes integer [not null, default: 0]
+  failures integer [not null, default: 0, note: 'failed + rejected']
+  last_event_id bigint [note: 'Highest email_events.id included']
+  computed_at timestamptz [not null, default: `now()`]
+
+  Note: 'DERIVED rollup of email_events / email_messages for reports and the dashboard.'
+}
+
+Table test_sends [headercolor: #C4405F] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  campaign_id uuid [not null, ref: > campaigns.id]
+  sent_by uuid [not null, ref: > users.id]
+  to_emails "text[]" [not null]
+  provider_message_id varchar(255)
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    campaign_id [name: 'ix_test_sends_campaign_id']
+  }
+
+  Note: 'Test emails sent before confirmation (CMP-07). Not counted in campaign stats.'
+}
+
+Table campaign_recipients [headercolor: #C4405F] {
+  id bigint [pk, increment]
+  campaign_id uuid [not null, ref: > campaigns.id]
+  subscriber_id uuid [ref: >? subscribers.id, note: 'NULL only if the subscriber was deleted later']
+  email citext [not null, note: 'Snapshot at freeze time']
+  merge_data jsonb [note: 'Snapshot of personalization fields at freeze time']
+  matched_audience_id uuid [ref: >? campaign_audiences.id, note: 'First include rule that selected this person']
+  status recipient_status [not null, default: 'pending']
+  skip_reason skip_reason
+  frozen_at timestamptz [not null, default: `now()`]
+  status_changed_at timestamptz
+
+  Indexes {
+    (campaign_id, status) [name: 'ix_campaign_recipients_campaign_id_status']
+    subscriber_id [name: 'ix_campaign_recipients_subscriber_id']
+    (campaign_id, email) [unique, name: 'uq_campaign_recipients_campaign_id_email']
+  }
+
+  Note: 'Frozen audience: one row per unique email, written when the campaign is confirmed. CHECK: ck_campaign_recipients_skip_reason_iff_skipped: (status = \'skipped\') = (skip_reason IS NOT NULL)'
+}
+
+Table email_messages [headercolor: #2A7DB5] {
+  id bigint [pk, increment]
+  account_id uuid [not null, ref: > accounts.id]
+  subscriber_id uuid [ref: >? subscribers.id]
+  email citext [not null, note: 'Recipient snapshot']
+  campaign_id uuid [ref: >? campaigns.id]
+  campaign_recipient_id bigint [ref: >? campaign_recipients.id]
+  automation_id uuid [ref: >? automations.id]
+  automation_step_id uuid [ref: >? automation_steps.id]
+  enrollment_id uuid [ref: >? automation_enrollments.id]
+  status message_status [not null, default: 'queued']
+  provider email_provider [not null, default: 'ses']
+  provider_message_id varchar(255) [note: 'Set when the provider accepts the message']
+  attempt_count smallint [not null, default: 0, note: 'Bounded retries (CMP-14)']
+  next_attempt_at timestamptz [note: 'Backoff for temporary provider failures']
+  last_error text
+  queued_at timestamptz [not null, default: `now()`]
+  accepted_at timestamptz
+  delivered_at timestamptz
+  bounced_at timestamptz
+  complained_at timestamptz
+  first_opened_at timestamptz
+  first_clicked_at timestamptz
+  unsubscribed_at timestamptz
+  correlation_id uuid [note: 'Trace ID across API request, background job and provider events']
+
+  Indexes {
+    (account_id, queued_at) [name: 'ix_email_messages_account_id_queued_at']
+    automation_id [name: 'ix_email_messages_automation_id', note: 'WHERE automation_id IS NOT NULL']
+    automation_step_id [name: 'ix_email_messages_automation_step_id', note: 'WHERE automation_step_id IS NOT NULL']
+    (campaign_id, status) [name: 'ix_email_messages_campaign_id_status']
+    queued_at [name: 'ix_email_messages_pending', note: 'WHERE status IN (\'queued\', \'submitting\')']
+    subscriber_id [name: 'ix_email_messages_subscriber_id']
+    campaign_recipient_id [unique, name: 'uq_email_messages_campaign_recipient_id', note: 'WHERE campaign_recipient_id IS NOT NULL']
+    (enrollment_id, automation_step_id) [unique, name: 'uq_email_messages_enrollment_id_step_id', note: 'WHERE enrollment_id IS NOT NULL']
+    (provider, provider_message_id) [unique, name: 'uq_email_messages_provider_message_id', note: 'WHERE provider_message_id IS NOT NULL']
+  }
+
+  Note: 'One email to one recipient, from a campaign (via campaign_recipients) or an automation. CHECK: ck_email_messages_one_origin: (campaign_id IS NOT NULL AND campaign_recipient_id IS NOT NULL AND automation_id IS NULL) OR (automation_id IS NOT NULL AND campaign_id IS NULL AND campaign_recipient_id IS NULL) | ck_email_messages_delivered_has_timestamp: status <> \'delivered\' OR delivered_at IS NOT NULL | ck_email_messages_accepted_has_provider_id: status NOT IN (\'accepted\', \'delivered\', \'soft_bounced\', \'bounced\', \'complained\', \'rejected\') OR (provider_message_id IS NOT NULL AND accepted_at IS NOT NULL)'
+}
+
+Table email_events [headercolor: #2A7DB5] {
+  id bigint [pk, increment]
+  account_id uuid [not null, ref: > accounts.id]
+  message_id bigint [ref: >? email_messages.id, note: 'NULL only if the provider reports an unknown message']
+  campaign_id uuid [ref: >? campaigns.id, note: 'Copied from the message so campaign reports avoid a join']
+  provider email_provider [not null]
+  provider_event_id varchar(255) [not null, note: 'Provider\'s event ID; dedupes webhook redeliveries']
+  event_type email_event_type [not null]
+  bounce_type bounce_type
+  link_id uuid [ref: >? campaign_links.id]
+  occurred_at timestamptz [not null]
+  received_at timestamptz [not null, default: `now()`]
+  payload jsonb
+  correlation_id uuid [note: 'Trace ID across API request, background job and provider events']
+
+  Indexes {
+    (account_id, event_type, occurred_at) [name: 'ix_email_events_account_id_event_type_occurred_at']
+    (campaign_id, event_type) [name: 'ix_email_events_campaign_id_event_type']
+    link_id [name: 'ix_email_events_link_id', note: 'WHERE link_id IS NOT NULL']
+    message_id [name: 'ix_email_events_message_id']
+    (provider, provider_event_id) [unique, name: 'uq_email_events_provider_event_id']
+  }
+
+  Note: 'Append-only provider and tracking events. The source of truth for delivery analytics. CHECK: ck_email_events_link_only_on_click: event_type = \'click\' OR link_id IS NULL | ck_email_events_bounce_type_only_on_bounce: event_type = \'bounce\' OR bounce_type IS NULL'
+}
+
+Table subscription_events [headercolor: #C2410C] {
+  id bigint [pk, increment]
+  account_id uuid [not null, ref: > accounts.id]
+  subscriber_id uuid [ref: >? subscribers.id]
+  email citext [not null, note: 'Snapshot, kept if subscriber is deleted']
+  event_type subscription_event_type [not null]
+  list_id uuid [ref: >? lists.id]
+  source change_source [not null]
+  campaign_id uuid [ref: >? campaigns.id]
+  message_id bigint [ref: >? email_messages.id]
+  ip_address inet
+  user_agent text
+  details jsonb
+  occurred_at timestamptz [not null, default: `now()`]
+  correlation_id uuid [note: 'Trace ID across API request, background job and provider events']
+
+  Indexes {
+    (account_id, occurred_at) [name: 'ix_subscription_events_account_id_occurred_at']
+    campaign_id [name: 'ix_subscription_events_campaign_id', note: 'WHERE campaign_id IS NOT NULL']
+    list_id [name: 'ix_subscription_events_list_id', note: 'WHERE list_id IS NOT NULL']
+    message_id [name: 'ix_subscription_events_message_id', note: 'WHERE message_id IS NOT NULL']
+    (subscriber_id, occurred_at) [name: 'ix_subscription_events_subscriber_id_occurred_at']
+  }
+}
+
+Table suppressions [headercolor: #C2410C] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id uuid [not null, ref: > accounts.id]
+  email citext [not null]
+  reason suppression_reason [not null]
+  source change_source [not null]
+  email_event_id bigint [ref: >? email_events.id, note: 'Bounce / complaint event that caused it']
+  created_by uuid [ref: >? users.id]
+  lifted_at timestamptz [note: 'Only via explicit re-subscription (CMPY-03)']
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (account_id, email) [name: 'ix_suppressions_account_id_email']
+    email_event_id [name: 'ix_suppressions_email_event_id', note: 'WHERE email_event_id IS NOT NULL']
+    (account_id, email) [unique, name: 'uq_suppressions_active_email', note: 'WHERE lifted_at IS NULL']
+  }
+}
+
+TableGroup account_and_auth {
+  accounts
+  sending_domains
+  users
+  auth_tokens
+  senders
+  user_identities
+  user_sessions
+}
+
+TableGroup audience {
+  custom_fields
+  lists
+  subscribers
+  tags
+  list_memberships
+  segments
+  subscriber_field_values
+  subscriber_tags
+}
+
+TableGroup templates_content {
+  content_blocks
+  media_assets
+  templates
+}
+
+TableGroup csv_import {
+  import_jobs
+  import_column_mappings
+  import_row_errors
+}
+
+TableGroup automation {
+  automations
+  automation_steps
+  automation_enrollments
+}
+
+TableGroup campaign_management {
+  campaigns
+  campaign_audiences
+  campaign_links
+  test_sends
+  campaign_recipients
+}
+
+TableGroup delivery_and_analytics {
+  campaign_stats
+  email_messages
+  email_events
+}
+
+TableGroup consent_and_suppression {
+  subscription_events
+  suppressions
+}
+
